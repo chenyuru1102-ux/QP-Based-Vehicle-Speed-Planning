@@ -1,0 +1,5 @@
+__pycache__/
+.venv/
+*.asv
+*.autosave
+results/matlab/workspace.mat

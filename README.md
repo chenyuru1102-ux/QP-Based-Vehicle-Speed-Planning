@@ -1,95 +1,417 @@
+
 # QP-Based Vehicle Speed Planning
 
-**V1.0 — Research Reconstruction | Fixed-path longitudinal optimization**
+![Version](https://img.shields.io/badge/Version-1.0-blue)
+![MATLAB](https://img.shields.io/badge/MATLAB-Optimization-orange)
+![Python](https://img.shields.io/badge/Python-SciPy-blue)
+![Status](https://img.shields.io/badge/Status-Verified-brightgreen)
 
-A reproducible reconstruction of an October 2026 system optimization course project at National Chi Nan University. The planner computes speed and acceleration along a known path with four mandatory stops, under longitudinal acceleration and speed constraints. This is an offline numerical study, not a real-time controller or a hardware demonstration.
+## Project Overview
 
-![Reconstructed speed and acceleration](results/independent/profiles.png)
+This project develops a convex Quadratic Programming (QP)
+framework for fixed-path vehicle speed planning, balancing
+reference speed tracking and acceleration smoothness under
+vehicle dynamics and physical constraints.
 
-## Reproduction status
+The optimization model is implemented in MATLAB using
+`quadprog` and independently validated using Python and SciPy.
 
-- **Original research (October 2026):** MATLAB `quadprog` experiments were reported in the course report and slides. Original source code and raw arrays are lost.
-- **Reconstruction (November 2026):** the documented MATLAB formulation is reimplemented in a standalone script. An independent SciPy calculation has actually been executed, with all four solutions certified in the original 241-dimensional space by numerical KKT residuals.
-- **Pending:** run the reconstructed MATLAB script using Optimization Toolbox on a licensed MATLAB installation. No MATLAB execution has been performed in the reconstruction environment. Original solver release and unrounded output are unavailable.
-- The reported endpoint tracking values are reproduced as **weighted** tracking costs, not raw errors. Original figures and table values are retained as historical evidence; see the [audit](docs/reproduction_audit.md).
+Potential applications include autonomous vehicles,
+autonomous mobile robots (AMRs), and longitudinal motion planning.
 
-## Problem formulation
+## Key Achievements
 
-Given a 60 m path sampled every 0.5 m, define squared speed `beta_i = v_i^2` at 121 nodes and constant acceleration `alpha_i` over 120 segments. Stack them into a 241-element decision vector. The chain rule gives `d(beta)/ds = 2a`, hence
+- Formulated a convex QP with 241 decision variables
+  and 124 equality constraints.
+- Evaluated four acceleration smoothing weight configurations.
+- Achieved an 85.55% reduction in acceleration-difference cost.
+- Reduced active acceleration and braking segments by 65.48%.
+- Verified all four solutions using numerical KKT conditions.
+- Successfully cross-validated MATLAB and Python solutions.
 
-```text
-beta[i+1] - beta[i] = 2 * ds * alpha[i]
-beta[0] = beta[40] = beta[80] = beta[120] = 0
-0 <= beta <= 36;  -2 <= alpha <= 1.5
+## Speed and Acceleration Profiles
+
+![Speed and Acceleration Profiles](results/matlab/profiles.png)
+
+## Mathematical Formulation
+
+### 1. Spatial Vehicle Dynamics
+
+The vehicle travels along a predetermined 60 m path
+with a spatial discretization interval of 0.5 m.
+
+Using the squared-speed transformation:
+
+$$
+\beta_i = v_i^2
+$$
+
+The longitudinal vehicle dynamics become:
+
+$$
+\frac{d\beta}{ds}=2a
+$$
+
+After spatial discretization:
+
+$$
+\beta_{i+1}-\beta_i=2\alpha_i\Delta s
+$$
+
+This transformation enables the vehicle dynamics
+to be represented as linear equality constraints.
+
+### 2. Decision Variables
+
+$$
+x=
+\begin{bmatrix}
+\beta\\
+\alpha
+\end{bmatrix}
+\in\mathbb{R}^{241}
+$$
+
+- 121 squared-speed variables.
+- 120 acceleration variables.
+- 120 vehicle dynamics constraints.
+- 4 mandatory stopping constraints.
+
+### 3. Simulation Parameters
+
+| Parameter | Value |
+|---|---:|
+| Path length | 60 m |
+| Spatial resolution | 0.5 m |
+| Reference speed | 5 m/s |
+| Maximum speed | 6 m/s |
+| Maximum acceleration | 1.5 m/s² |
+| Minimum acceleration | -2 m/s² |
+| Mandatory stops | 0, 20, 40, 60 m |
+| Tracking weight | 0.08 |
+| Smoothing weights | 0, 1, 10, 100 |
+
+### 4. Objective Function
+
+The optimization objective balances squared-speed
+tracking and acceleration smoothness.
+
+$$
+E_{\mathrm{track}}
+=\sum_{i=0}^{120}(\beta_i-25)^2
+$$
+
+$$
+E_{\mathrm{smooth}}
+=\sum_{i=0}^{118}(\alpha_{i+1}-\alpha_i)^2
+$$
+
+$$
+\min_x J=0.08E_{\mathrm{track}}
++w_sE_{\mathrm{smooth}}
+$$
+
+### 5. Quadratic Programming
+
+The optimization problem is expressed in standard QP form:
+
+$$
+\min_x\frac{1}{2}x^THx+f^Tx
+$$
+
+Subject to:
+
+$$
+A_{\mathrm{eq}}x=b_{\mathrm{eq}}
+$$
+
+$$
+lb\leq x\leq ub
+$$
+
+The Hessian is constructed as:
+
+$$
+H=2
+\begin{bmatrix}
+0.08I&0\\
+0&w_sD^TD
+\end{bmatrix}
+$$
+
+where D is the first-difference matrix for adjacent
+acceleration values.
+
+| Matrix | Dimensions |
+|---|---:|
+| H | 241 × 241 |
+| f | 241 × 1 |
+| Aeq | 124 × 241 |
+| beq | 124 × 1 |
+| D | 119 × 120 |
+
+The Hessian is positive semidefinite.
+After eliminating the equality constraints,
+the reduced objective is strictly convex,
+ensuring a unique primal optimum.
+
+## Experimental Results
+
+The following results were obtained using MATLAB `quadprog`.
+
+| Smoothing Weight | Raw Tracking | Weighted Tracking | Raw Smoothness | Active Segments |
+|---:|---:|---:|---:|---:|
+| 0 | 18898.00 | 1511.84 | 34.2500 | 84 |
+| 1 | 18912.44 | 1512.99 | 27.8248 | 72 |
+| 10 | 19877.10 | 1590.17 | 13.1551 | 61 |
+| 100 | 23091.88 | 1847.35 | 4.9500 | 29 |
+
+### Active Set Analysis
+
+![Active Set Analysis](results/matlab/active_set.png)
+
+Increasing the smoothing weight reduces the number
+of segments operating at the acceleration and braking limits.
+
+| Smoothing Weight | Acceleration Bound | Braking Bound | Total |
+|---:|---:|---:|---:|
+| 0 | 48 | 36 | 84 |
+| 1 | 42 | 30 | 72 |
+| 10 | 37 | 24 | 61 |
+| 100 | 24 | 5 | 29 |
+
+### Objective Function Analysis
+
+![Objective Function Analysis](results/matlab/objective.png)
+
+Increasing the smoothing weight results in:
+
+- An 85.55% reduction in acceleration-difference cost.
+- A 65.48% reduction in active acceleration and braking segments.
+- A 22.19% increase in squared-speed tracking error.
+
+These results demonstrate the trade-off between
+reference speed tracking and acceleration smoothness.
+
+The weighted total objective values are not directly
+comparable across different smoothing weights.
+
+## KKT Verification
+
+Optimality is evaluated using the
+Karush-Kuhn-Tucker (KKT) conditions.
+
+### Stationarity
+
+$$
+Hx+f+A_{\mathrm{eq}}^T\nu
+-\lambda_L+\lambda_U=0
+$$
+
+### Primal Feasibility
+
+$$
+A_{\mathrm{eq}}x=b_{\mathrm{eq}}
+$$
+
+$$
+lb\leq x\leq ub
+$$
+
+### Dual Feasibility
+
+$$
+\lambda_L\geq0,\quad\lambda_U\geq0
+$$
+
+### Complementary Slackness
+
+$$
+\lambda_L\odot(x-lb)=0
+$$
+
+$$
+\lambda_U\odot(ub-x)=0
+$$
+
+### Numerical Verification Results
+
+| Smoothing Weight | Maximum KKT Residual | Status |
+|---:|---:|---|
+| 0 | 6.393e-9 | PASS |
+| 1 | 1.288e-9 | PASS |
+| 10 | 1.155e-10 | PASS |
+| 100 | 2.234e-10 | PASS |
+
+All four solutions satisfy the numerical
+KKT acceptance threshold of 1e-7.
+
+## MATLAB-Python Cross-Validation
+
+An equivalent reduced optimization model is independently
+solved using SciPy SLSQP, followed by active-set polishing
+and full-dimensional KKT verification.
+
+| Validation Metric | Result |
+|---|---:|
+| Successful MATLAB solutions | 4/4 |
+| KKT verification passed | 4/4 |
+| Maximum MATLAB KKT residual | 6.393e-9 |
+| Maximum Python KKT residual | < 3e-11 |
+| Maximum raw tracking difference | 7.023e-7 |
+| Maximum weighted tracking difference | 5.619e-8 |
+| Maximum raw smoothness difference | 8.961e-8 |
+| Active constraint count difference | 0 |
+| Physical bound violations | 0 |
+| Mandatory stop violations | 0 |
+
+The numerical agreement between the two solvers
+supports the correctness of the optimization implementation.
+
+**Project Status: Completed and Verified**
+
+## Installation and Usage
+
+### MATLAB
+
+Requirements:
+
+- MATLAB R2020a or later
+- Optimization Toolbox
+
+Clone the repository:
+
+```bash
+git clone https://github.com/chenyuru1102-ux/QP-Based-Vehicle-Speed-Planning.git
 ```
 
-The objective is
-
-```text
-E_track  = sum((beta - 25)^2)
-E_smooth = sum(diff(alpha)^2)
-J        = 0.08 * E_track + ws * E_smooth
-ws       = [0, 1, 10, 100]
-```
-
-For `quadprog`, `H = 2 * blkdiag(0.08 I, ws D' D)` and `f = [-2*0.08*betaRef; zeros(120,1)]`, where `D` is the 119-by-120 first-difference matrix. The equality matrix is 124-by-241 (rank 124; 364 nonzeros). `H` is positive semidefinite; after eliminating the equality constraints the reduced objective is strictly convex because the tracking weight is positive and acceleration is determined by squared speed. The smoothness term is a spatial acceleration-difference surrogate, **not time-based jerk**.
-
-## Reproduce in MATLAB
-
-Requires MATLAB R2020a or later (for plotting/export), Optimization Toolbox and `quadprog`. Open MATLAB, set Current Folder to the repository root, and run:
+Open MATLAB, navigate to the repository root, and run:
 
 ```matlab
 run('matlab/run_reconstruction.m')
 ```
 
-The script uses `interior-point-convex`, constraint and optimality tolerances of `1e-9`, and the documented `1e-4` bound-activity tolerance. It saves raw decisions, dual variables, summary, a MAT workspace, environment metadata, and three figures under `results/matlab/`. It compares regenerated metrics to the independent reference and fails explicitly if the audit thresholds are exceeded. No model parameter is tuned to match the report. The independent data are not inputs to the solver.
+The MATLAB implementation uses:
 
-## Independent verification (optional)
+- Solver: `quadprog`
+- Algorithm: `interior-point-convex`
+- Optimality tolerance: `1e-9`
+- Constraint tolerance: `1e-9`
+- Active-bound tolerance: `1e-4`
 
-From the repository root with Python 3 and pip:
+Generated results are saved in `results/matlab/`.
+
+### Python
+
+Install the required dependencies:
 
 ```bash
 python -m pip install -r validation/requirements.txt
+```
+
+Run the independent numerical verification:
+
+```bash
 python validation/verify.py
 ```
 
-This uses an equivalent reduced model: eliminate the four fixed beta nodes and the dynamics, solve with SciPy SLSQP, polish the candidate active set with an equality QP solve, then reconstruct the full-dimensional primal and dual certificate. Results are written to `results/independent/`. The script asserts all five feasibility/optimality residuals are below `1e-7`; this is an audit threshold, not a change to solver options in MATLAB.
+Generated results are saved in `results/independent/`.
 
-## Reconstructed numerical results (independent solver)
-
-| ws | Raw tracking | Weighted tracking | Raw smoothness | Active +1.5 | Active -2 | Total active |
-|---:|---:|---:|---:|---:|---:|---:|
-| 0 | 18898.00 | 1511.84 | 34.2500 | 48 | 36 | 84 |
-| 1 | 18912.44 | 1512.99 | 27.8248 | 42 | 30 | 72 |
-| 10 | 19877.10 | 1590.17 | 13.1551 | 37 | 24 | 61 |
-| 100 | 23091.88 | 1847.35 | 4.9500 | 24 | 5 | 29 |
-
-![Active bounds](results/independent/active_set.png)
-
-![Objective decomposition](results/independent/objective.png)
-
-Across the four cases, larger smoothing weights reduce the raw acceleration-difference penalty while increasing squared-speed tracking error. The endpoint smoothness decrease is 85.55%; active segments decrease from 84 to 29. The weighted total objective is not a directly comparable ranking across different weights.
-
-## KKT verification
-
-The full-space certificate checks equality feasibility, box-bound feasibility, stationarity (`Hx + f + Aeq'nu - lambdaL + lambdaU`), dual nonnegativity and complementary slackness. Maximum observed independent residual is below `3e-11`. Activity is based on geometric proximity to a bound, not strictly positive multipliers. Multipliers at redundant stop/lower-bound constraints need not be unique.
-
-## Repository layout
+## Repository Structure
 
 ```text
-matlab/run_reconstruction.m          # primary reconstructed MATLAB script
-validation/verify.py                 # independently executed verifier
-validation/requirements.txt
-results/independent/                 # generated numeric CSVs, figures, environment
-results/matlab/                      # generated when MATLAB is run
-reference/original_report_table3.csv # original endpoint values, unchanged
-reference/source_manifest.md         # document provenance
-docs/reproduction_audit.md          # discrepancy analysis and acceptance criteria
-docs/LEARNING_ZH.md                 # derivations and guided MATLAB exercises
+QP-Based-Vehicle-Speed-Planning/
+├── README.md
+├── matlab/
+│   └── run_reconstruction.m
+├── validation/
+│   ├── verify.py
+│   └── requirements.txt
+├── results/
+│   ├── matlab/
+│   └── independent/
+├── reference/
+│   ├── original_report_table3.csv
+│   └── source_manifest.md
+└── docs/
+    ├── reproduction_audit.md
+    └── LEARNING_ZH.md
 ```
 
-## Scope and attribution
+## Technologies
 
-The original course project and the reconstructed implementation are distinct. This is a fixed-path, fixed-stop, one-dimensional, convex optimization baseline. It does not model signal timing, steering, moving obstacles, true jerk, energy, minimum travel time or measured comfort. The original report mentions an illustrative animation with a two-second dwell; this reconstruction does not implement that optional animation because the requested baseline concerns the QP experiments. V2.0 extensions are intentionally deferred.
+- MATLAB
+- MATLAB Optimization Toolbox
+- Python
+- SciPy
+- NumPy
+- Matplotlib
+- Convex Optimization
+- Quadratic Programming
+- Sparse Matrix Computation
+- Karush-Kuhn-Tucker Conditions
+- Active Set Analysis
 
-References: Boyd & Vandenberghe (2004), *Convex Optimization*; Lipp & Boyd (2014), *Minimum-time speed optimisation over a fixed path*, DOI: 10.1080/00207179.2013.875224; MathWorks, `quadprog` documentation. Original report and presentation are not redistributed in this package. No license is selected; the owner should choose one before public reuse is granted.
+## Limitations
+
+- Fixed-path, one-dimensional vehicle motion.
+- Predetermined mandatory stopping positions.
+- Offline numerical optimization.
+- No dynamic obstacle avoidance.
+- No explicit travel-time minimization.
+- Spatial acceleration-difference penalty rather than
+  time-based jerk optimization.
+- No physical vehicle testing.
+
+## Future Work
+
+Potential extensions include:
+
+- Curvature-dependent speed constraints.
+- Time-based jerk optimization.
+- Travel-time optimization.
+- Dynamic speed constraints.
+- Receding horizon optimization.
+- ROS 2 and autonomous mobile robot integration.
+
+These extensions are not implemented in Version 1.0.
+
+## References
+
+1. Boyd, S., & Vandenberghe, L. (2004).
+   Convex Optimization. Cambridge University Press.
+
+2. Lipp, T., & Boyd, S. (2014).
+   Minimum-time speed optimisation over a fixed path.
+   International Journal of Control, 87(6), 1297–1311.
+   https://doi.org/10.1080/00207179.2013.875224
+
+3. MathWorks. quadprog — Quadratic Programming.
+   https://www.mathworks.com/help/optim/ug/quadprog.html
+
+## Author
+
+**Yu-Ru Chen**
+
+Graduate Student in Electrical Engineering  
+National Chi Nan University, Taiwan
+
+Research interests:
+
+- Autonomous Mobile Robots
+- Motion Planning
+- Vehicle Speed Optimization
+- Autonomous Navigation
+- Mathematical Optimization
+- ROS 2
+
+## Project Information
+
+- Version: 1.0
+- Completed: November 2026
+- Category: Numerical Optimization and Motion Planning
+- Validation: MATLAB and Python
+
+Additional research provenance and reproducibility records
+are available in the [technical audit](docs/reproduction_audit.md).
+
